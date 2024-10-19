@@ -1,19 +1,29 @@
-
+""""
+顔画像からメラニン・ヘモグロビンベクトルを求めるプログラム
+"""
 import cv2
-from scipy.optimize import minimize
 import numpy as np
 from scipy.optimize import fmin
-import plotly.graph_objects as go
 from  pathlib import Path
 import os
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 
 ## ==============================================================
-##  最適化アルゴリズム
+##  独立評価関数作成用関数
 ##===============================================================
-def fmin_Make_M(K, res):
-    M = np.empty([K, K])
+
+def Make_Moment(K, res):
+    """
+    第K次モーメントを求めた後、モーメントを用いて独立度を評価する行列Mを求める
+    入力：K モーメントの次数
+         res 入力信号
+    出力:モーメント差分行列M（信号が独立している場合0に近づく）
+
+    """
+
+    M = np.empty([K, K]) ##初期化
+    ##モーメントを求め、モーメント差分行列Mを計算
     for m1 in range(0, K):
         for m2 in range(0, K - m1):
             E12 = np.mean((res[0, :] ** m1) * (res[1, :] ** m2))
@@ -22,31 +32,43 @@ def fmin_Make_M(K, res):
     return M
 
 
-def factT(x):
+def get_fuctorial(x):
+    """
+    数字の階乗を求めるための関数
+    入力：ある数字x
+    出力:階乗された数字x^(x)
+
+    """
     countfactT = 1
     for ifactT in range(1, x + 1):
         countfactT = countfactT * ifactT
     return countfactT
 
 
-def GfuncT(ga1, ga2, gb1, gb2):
-    Sigma = 1
+def get_weight(ga1, ga2, gb1, gb2):
+    """
+    ガウス分布を利用し独立評価を行う際に用いる際に重要なモーメントの次数に重みづけをする
+    ここでは二次モーメント（分散）四次モーメント（尖度）
+    入力 整数のパラメータであり各信号に対するモーメントの次数を表す
+    出力 モーメントに対する重み  G
+    """
+    Sigma = 1 
     G = 1
     if (ga1 + gb1) % 2 == 0:
         k = (ga1 + gb1) // 2
-        J2k = (factT(2 * k) * (2 * np.pi) ** (1 / 2)) / (
-            ((4**k) * factT(k)) * (Sigma ** (2 * k - 1))
+        J2k = (get_fuctorial(2 * k) * (2 * np.pi) ** (1 / 2)) / (
+            ((4**k) * get_fuctorial(k)) * (Sigma ** (2 * k - 1))
         )
-        sg = ((-1) ** ((ga1 - gb1) / 2) * J2k) / (factT(ga1) * factT(gb1))
+        sg = ((-1) ** ((ga1 - gb1) / 2) * J2k) / (get_fuctorial(ga1) * get_fuctorial(gb1))
         G = G * sg
     else:
         G = 0
     if (ga2 + gb2) % 2 == 0:
         k = (ga2 + gb2) // 2
-        J2k = (factT(2 * k) * (2 * np.pi) ** (1 / 2)) / (
-            ((4**k) * factT(k)) / (Sigma ** (2 * k - 1))
+        J2k = (get_fuctorial(2 * k) * (2 * np.pi) ** (1 / 2)) / (
+            ((4**k) * get_fuctorial(k)) / (Sigma ** (2 * k - 1))
         )
-        sg = ((-1) ** ((ga2 - gb2) / 2) * J2k) / (factT(ga2) * factT(gb2))
+        sg = ((-1) ** ((ga2 - gb2) / 2) * J2k) / (get_fuctorial(ga2) * get_fuctorial(gb2))
         G = G * sg
     else:
         G = 0
@@ -54,16 +76,30 @@ def GfuncT(ga1, ga2, gb1, gb2):
 
 
 def fmin_Cal_Cost_Burel(K, M):
+    """
+    Make_Moment関数で求めたモーメント差分行列Mを用いてコスト関数の計算を行う
+    入力:K:モーメント字数
+        M: モーメント差分行列関数
+    出力：独立評価値ret
+
+    """
     CostGMM = 0
     for a1 in range(0, K):
         for a2 in range(0, K - a1):
             for b1 in range(0, K):
                 for b2 in range(0, K - b1):
-                    CostGMM = CostGMM + GfuncT(a1, a2, b1, b2) * M[a1, a2] * M[b1, b2]
+                    CostGMM = CostGMM + get_weight(a1, a2, b1, b2) * M[a1, a2] * M[b1, b2]
     return CostGMM
 
 
-def f_burel(s):
+def f_burel(s,sensor):
+    """
+    ICA アルゴリズムにおける独立評価値（コスト関数）を返すためのmain関数
+    コスト関数は小さいほど信号が独立である
+    入力:ベクトル
+    出力：独立評価値cost
+
+    """
     x1 = np.cos(s[0])
     y1 = np.sin(s[0])
     x2 = np.cos(s[1])
@@ -71,75 +107,53 @@ def f_burel(s):
     H = np.array([[x1, y1], [x2, y2]])
     res = H @ sensor
     K = 4
-    M = fmin_Make_M(K, res)
-    ret = fmin_Cal_Cost_Burel(K, M)
-    return ret
-
-if __name__ == "__main__":
+    M = Make_Moment(K, res)
+    cost = fmin_Cal_Cost_Burel(K, M)
+    return cost
 
 
-    # Master Vector provided by Prof. Tsumura
-    # melanin_vector	= [0.087196, 0.471511, 0.877539]
-    # hemoglobin_vector	= [0.132687, 0.640552, 0.756364]
+## ==============================================================
+##  独立評価関数作成用関数修了
+##===============================================================
 
-    # ===============================================================================
-    # 画像の読み込み
-    # ===============================================================================
-    # 陰を含まない領域画像名の入力
-    current= Path(__file__)
-    DATA_DIR =str(current.parents[1] / "data")
-    NShadow_path = DATA_DIR +"/master/Patch1_NoShadow.png"
+def color_vector_estimation(Nshadow_path,SkinImage_path):
+    """
+    入力した画像を読み込み、メラニン・ヘモグロビンのベクトルを求める
+    入力　Nshadow_path：影のない小領域画像へのパス
+    　　　SkinImage_path：色素成分が豊富にある画像へのパス
+    """
+    # # # ===============================================================================
+    # # # 影のない小領域画像における肌平面を求める
+    # # # ===============================================================================
     NShadow_rgb = cv2.imread(NShadow_path)
-    
     Nheight , Nwidth,Nchannel = NShadow_rgb.shape
     Nshadow_r = NShadow_rgb[:,:,2]
     Nshadow_g = NShadow_rgb[:,:,1]
     Nshadow_b = NShadow_rgb[:,:,0]
-    
-    
-    # # 小領域画像名の入力（陰影があってもよい）
-    SkinImage_path = DATA_DIR +"/master/Patch1_RegularSkin.png"
-    rgb = cv2.imread(SkinImage_path)
-    height ,width,channel = rgb.shape
-    r = rgb[:,:,2]
-    g = rgb[:,:,1]
-    b = rgb[:,:,0]
-    
-    # # # ===============================================================================
-    # # # 独立成分分析による色素成分色ベクトルの推定
-    # # # ===============================================================================
-
     # # # 画像空間から濃度空間へ変換
-    # # # 肌色ベクトル
     NShadow_logr = -np.log(Nshadow_r/255)
     NShadow_logg = -np.log(Nshadow_g/255)
     NShadow_logb = -np.log(Nshadow_b/255)
     Nskin = np.array([NShadow_logr.flatten(),NShadow_logg.flatten(),NShadow_logb.flatten()])
     
-    Nskin_mean = Nskin.mean(axis=1)
-    NSkin_MeanMat = np.kron(Nskin_mean[:,np.newaxis], np.ones((1, Nheight * Nwidth)))## 平均値の平面を出している
-    Nskin_base = Nskin-NSkin_MeanMat
     # # 濃度ベクトルSの固有値と固有ベクトルを計算    
-    # # 1.共分散を求める
-    # # 2.固有値を求める eigenvalue 固有ベクトル　eigenvector
     N_covariance = np.cov(Nskin)
     N_eig, N_eigvec = np.linalg.eig(N_covariance)
-    
-    N_eig = N_eig
-    N_eigvec = N_eigvec
-    
-    # 昇順に並べ替え
     Nidx = np.argsort(N_eig)[::-1]
-    N_eig_sorted = N_eig[Nidx]
-    N_eigvec_T = N_eigvec.T ##順番入れ替えるときに行と列を対応させるため転置
+    N_eigvec_T = N_eigvec.T 
     
     N_eigvec_sorted =N_eigvec_T[Nidx]
     N_pca1 = N_eigvec_sorted[0,:] 
     N_pca2 = N_eigvec_sorted[1,:] 
 
     # # ===============================================================================
-    # # 独立成分分析による色素成分色ベクトルの推定
+    # # 色素成分が沢山ある画像の情報を影のない画像平面に射影する
     # # ===============================================================================
+    rgb = cv2.imread(SkinImage_path)
+    height ,width,channel = rgb.shape
+    r = rgb[:,:,2]
+    g = rgb[:,:,1]
+    b = rgb[:,:,0]
     # # 画像空間から濃度空間へ変換
     # # 肌色ベクトル
     logr = -np.log(r/255)
@@ -167,7 +181,6 @@ if __name__ == "__main__":
     )
     # # 陰影除去
     # # skin_flat：陰影除去したメラヘモベクトルの平面 
-    # # rest：陰影成分 (t'*vec(1,:))' + S
     Skin_flat = t+Skin
     # # ===============================================================================
     # # 肌色分布平面上のデータを，主成分分析により白色化する．
@@ -175,81 +188,70 @@ if __name__ == "__main__":
     # #
     # # ゼロ平均計算用
     Skin_mean = Skin_flat.mean(axis=1)
-    Skin_MeanMat = np.kron(Skin_mean[:,np.newaxis], np.ones((1, height * width)))## 平均値の平面を出している
+    Skin_MeanMat = np.kron(Skin_mean[:,np.newaxis], np.ones((1, height * width)))
 
     # # 濃度ベクトルSの固有値と固有ベクトルを計算
-    Covariance= np.cov(Skin_flat) ## 陰影除去平面の共分散　＝＞固有値もとめる　ｐ＝直行
+    Covariance= np.cov(Skin_flat) 
     
     eig,eigvec = np.linalg.eig(Covariance)
-
-    # 昇順に並べ替え
     idx = np.argsort(eig)[::-1]
-    eig_sorted = eig[idx]
-    eigvec_T = eigvec.T ##並び替えのため転地
+    eigvec_T = eigvec.T 
     eigvec_sorted =eigvec_T[idx]
 
     ## 第一主成分,第二主成分を格納する行列
     P1P2_vec = eigvec_sorted[0:2,:]
 
     # # 第1主成分，第2主成分
-    Skin_base = Skin_flat - Skin_MeanMat
-    Pcomponent = P1P2_vec @ (Skin_flat - Skin_MeanMat) ##平均を引いて正規化　ベクトルかけて白色化
+    Pcomponent = P1P2_vec @ (Skin_flat - Skin_MeanMat) ##平均を引いて正規化ベクトルかけて白色化
     
     # # ===============================================================================
-    # # 独立成分分析
+    # # 独立成分分析を実行する
     # # ===============================================================================
-
-    size_dimention, num_samples = Pcomponent.shape
-
+    
     Pstd = np.std(Pcomponent, axis=1,ddof=1)
-    NM = np.diag(1 / Pstd)
-    sensor = NM @ Pcomponent  ## 規格化
+    Normalization_Matrix= np.diag(1 / Pstd)
+    sensor = Normalization_Matrix @ Pcomponent  
+    
+    # # ===============================================================================
+    # #  Burel の独立評価関数が最小となる信号を求める
+    # # ===============================================================================
     np.random.seed(seed=5)
-    res = sensor
-    flag_1 =0
-    flag_2 =0
     while True:
         # Burelの独立評価値をNelder-Mead法で最小化
         # 観測値は相関がある　＝＞　独立なベクトルを求める
         # s   乱数
         # ans: 独立評価値
         s = np.zeros((1,2))
-        s[0,0] = np.random.rand(1) * np.pi ##角度でベクトルを表している
-        s[0,1] = np.random.rand(1) * np.pi ##角度でベクトルを表している
-        s_solved = fmin(f_burel, s) ## 最適化関数
-        # s_solved= minimize(f_burel,s,method='Nelder-Mead')
-        
-        
-        ans = f_burel((s_solved)) ##最適化したもの用いて評価値を出す
+        s[0,0] = np.random.rand(1) * np.pi 
+        s[0,1] = np.random.rand(1) * np.pi 
+        s_solved = fmin(lambda s: f_burel(s, sensor), s)  
+        cost = f_burel(s_solved,sensor)
         ## 角度から座標への変換
         x1 = np.cos(s_solved[0])
         y1 = np.sin(s_solved[0])
         x2 = np.cos(s_solved[1])
         y2 = np.sin(s_solved[1])
-        
-        
         H = np.array([[x1, y1], [x2, y2]])
-        ## unitから　逆算的にメラニン　ヘモグロビンのベクトルを求めている
+    # # ===============================================================================
+    # #  メラニン・ヘモグロビンベクトルの導出
+    # # ===============================================================================
         unit1 = np.array([1.0, 0.0]).T
         unit2 = np.array([0.0, 1.0]).T
 
-        TM = H @ NM @ P1P2_vec
+        TM = H @ Normalization_Matrix @ P1P2_vec
         
         InvTM = np.linalg.pinv(TM)
         
-        # メラニン・ヘモグロビンの色素成分色ベクトル
         c_1 = InvTM @ unit1
         c_2 = InvTM @ unit2
         
         
-        ## 例外処理　(反転)
+        ## 例外処理
         for i in range(3):
             if c_1[i] < 0:
                 c_1[i] *= -1
-                flag_1+=1
             if c_2[i] < 0:
                 c_2[i] *= -1
-                flag_2+=1
         
         
         ## メラニンとヘモグロビンのベクトルの関係性からどっちベクトルか推定
@@ -269,14 +271,29 @@ if __name__ == "__main__":
             print("エラー：色ベクトルが負の値です．\n")
         
     ## -------------------------------------------------------------------------
-    # print(f'{ans=}')
-    
-    ## melanin - hemogrobin ベクトル
     
     color_vector = np.zeros((2,3))
     color_vector[0] = hemoglobin
     color_vector[1] = melanin
     
+    print(f"{cost =}")
     print(f"{melanin=}")
     print(f"{hemoglobin=}")
     print("color vector estimation is Done.")
+
+    
+
+if __name__ == "__main__":
+
+    # ===============================================================================
+    # 画像の読み込み
+    # ===============================================================================
+    # 陰を含まない領域画像（Noshadow）の入力
+    current= Path(__file__).resolve()
+    DATA_DIR =str(current.parents[1] / "data")
+    NShadow_path = DATA_DIR +"/master/Patch1_NoShadow.png"
+
+    # # 小領域画像（色素成分が多い箇所）の入力
+    SkinImage_path = DATA_DIR +"/master/Patch1_RegularSkin.png"
+    
+    color_vector_estimation(NShadow_path,SkinImage_path)

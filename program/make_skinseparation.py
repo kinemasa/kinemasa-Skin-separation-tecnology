@@ -16,17 +16,25 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 
 def save_image(path, image):
+    """"
+    画像を保存するための関数
+    """
     image_out = np.clip(image, 0, 1)
     image_out = cv2.cvtColor((image_out * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
     cv2.imwrite(path, image_out)
     return
 
 def get_image_rotation_info(image_path):
+    """"
+    iphoneで撮影した画像の回転情報を読み込む
+    意図しない回転に対応するため
+    入力:image_path 画像のパス
+    出力：orientation 回転情報
+    """
     img = Image.open(image_path)
     # EXIFデータを取得
     exif_data = img.getexif()
 
-    # EXIFデータが存在しない場合はNoneを返す
     if not exif_data:
         return None
     exif = {TAGS.get(tag): value for tag, value in exif_data.items()}
@@ -37,6 +45,13 @@ def get_image_rotation_info(image_path):
 
 
 def makeSkinSeparation(input_image_list,OUTPUT_DIR,vector):
+    """"
+    入力画像をメラニン・ヘモグロビン・陰影画像に分離する関数
+    入力：input_image_list 画像のリスト
+        OUTPUT_DIR: 出力先フォルダへのパス
+        vector :メラニン・ヘモグロビンベクトル
+    出力　色素成分分離後画像
+    """
     
     melanin =vector[0]
     hemoglobin=vector[1]
@@ -51,7 +66,7 @@ def makeSkinSeparation(input_image_list,OUTPUT_DIR,vector):
         image_type = os.path.splitext(os.path.basename(input_image_path))[1]
 
         #===============================================================================
-        # Load input RBG image.
+        # 画像の読み込み
         #===============================================================================
         try:
             if image_type == '.npy': # Linear RGB, HDR after AIRAW and ReAE.
@@ -72,17 +87,10 @@ def makeSkinSeparation(input_image_list,OUTPUT_DIR,vector):
         image_height = image_rgb.shape[0]
         image_width = image_rgb.shape[1]
         
-        # 回転情報を表示
-        if rotation_info ==6:
-            print(f'回転情報: {rotation_info}')
-        elif rotation_info ==1:
-            print(f'回転情報: {rotation_info}')
-        else:
-            print('回転情報が見つかりませんでした。')
 
         
         #===============================================================================
-        # 必要情報の取得
+        # 画像調整用パラメーターの設定
         #===============================================================================
         # γ 補正用パラメータの取得
         ##固定値
@@ -94,13 +102,45 @@ def makeSkinSeparation(input_image_list,OUTPUT_DIR,vector):
         gg = [1, 1, 1]
         DC = 1 / 255
         
-
-        # 色ベクトルと照明強度ベクトル　## このベクトルの逆行列でもできるかも？
+        # 色ベクトルと照明強度ベクトル
         vec = np.zeros((3, 3), dtype=np.float32)
         vec[0] = np.array([1.0, 1.0, 1.0])
         vec[1] = melanin
         vec[2] = hemoglobin
 
+        #===============================================================================
+        # 画像情報を濃度空間へ
+        #===============================================================================
+
+        # 配列の初期化
+        linearSkin = np.zeros_like(image_rgb, dtype=np.float32).transpose(2,0,1)
+        S = np.zeros_like(image_rgb, dtype=np.float32).transpose(2,0,1)
+
+        # 画像の補正 (画像の最大値を1に正規化)
+        
+        skin = image_rgb.transpose(2,0,1).astype(np.float32)
+        for i in range(3):
+            linearSkin[i] = np.power(((skin[i]-cc)/aa), (1/gamma)-bb)/gg[i]/255
+
+        # マスク画像の作成 (黒い部分は除く）
+        img_mask = np.zeros_like(linearSkin, dtype=np.float32)
+        img_mask2 = DC + np.zeros_like(linearSkin, dtype=np.float32)
+        img_mask[linearSkin>0.0] = 1    
+        img_mask2[linearSkin>0.0] = 0   
+
+        # 濃度空間 (log空間) へ
+        S = -np.log(linearSkin + img_mask2) * img_mask
+
+        # 肌色空間の起点を 0 へ
+        # 必要に応じて調整するパラメーター
+        MinSkin = [0, 0, 0]
+        for i in range(3):
+            S[i] = S[i] - MinSkin[i]
+        
+        #===============================================================================
+        # 陰影成分の除去
+        #===============================================================================
+        
         # 肌色分布平面の法線 = 2つの色ベクトルの外積
         # 平面から法線を求める式 (vec(1,:) = [1 1 1] なので式には考慮せず)
         norm = [
@@ -108,30 +148,6 @@ def makeSkinSeparation(input_image_list,OUTPUT_DIR,vector):
             vec[1,2]*vec[2,0]-vec[1,0]*vec[2,2],
             vec[1,0]*vec[2,1]-vec[1,1]*vec[2,0],
             ]
-
-        # 配列の初期化
-        linearSkin = np.zeros_like(image_rgb, dtype=np.float32).transpose(2,0,1)
-        S = np.zeros_like(image_rgb, dtype=np.float32).transpose(2,0,1)
-
-        # 画像のガンマ補正 (画像の最大値を1に正規化)
-        # TODO: 現状逆ガンマの作用なし。津村先生に確認する。
-        skin = image_rgb.transpose(2,0,1).astype(np.float32)
-        for i in range(3):
-            linearSkin[i] = np.power(((skin[i]-cc)/aa), (1/gamma)-bb)/gg[i]/255
-
-        # マスク画像の作成 (黒い部分を除く)
-        img_mask = np.zeros_like(linearSkin, dtype=np.float32)
-        img_mask2 = DC + np.zeros_like(linearSkin, dtype=np.float32)
-        img_mask[linearSkin>0.0] = 1     # % マスク (0 or 1)
-        img_mask2[linearSkin>0.0] = 0   # マスク (DC or 0)
-
-        # 濃度空間 (log空間) へ
-        S = -np.log(linearSkin + img_mask2) * img_mask
-
-        # 肌色空間の起点を 0 へ
-        MinSkin = [0, 0, 0]
-        for i in range(3):
-            S[i] = S[i] - MinSkin[i]
 
         # 照明ムラ方向と平行な成分をとおる直線と肌色分布平面との交点を求める
         # housen：肌色分布平面の法線
@@ -194,7 +210,7 @@ def makeSkinSeparation(input_image_list,OUTPUT_DIR,vector):
 
 if __name__ == '__main__':
     
-    current= Path(__file__)
+    current= Path(__file__).resolve()
     DATA_DIR =str(current.parents[1] / "data")
     target_list =['sample1']
     
@@ -210,9 +226,7 @@ if __name__ == '__main__':
     
     for target in target_list:
         OUTPUT_DIR = str(current.parents[1])+"/data/"+target+"/result/"
-        print(DATA_DIR+"/")
         input_image_list = glob.glob(str(DATA_DIR+"/"+target +"/**.png"))
-        # Make output directory.
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         makeSkinSeparation(input_image_list,OUTPUT_DIR,vector)
 
