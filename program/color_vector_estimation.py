@@ -291,9 +291,9 @@ if __name__ == "__main__":
     # 陰を含まない領域画像（Noshadow）の入力
     current= Path(__file__).resolve()
     DATA_DIR =str(current.parents[1] / "data")
-    NShadow_path = DATA_DIR +"/master/Patch1_NoShadow.png"
+    NShadow_path = DATA_DIR +"/master/SIE-raw/auto-bright-Noshadow-mini1.png"
 
     # # 小領域画像（色素成分が多い箇所）の入力
-    SkinImage_path = DATA_DIR +"/master/Patch1_RegularSkin.png"
+    SkinImage_path = DATA_DIR +"/master/SIE-raw/auto-bright-Regular2.png"
     
     color_vector_estimation(NShadow_path,SkinImage_path)
