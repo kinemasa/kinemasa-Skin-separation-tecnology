@@ -281,6 +281,34 @@ def create_face_mask(image_rgb,erosion_size=5):
 
     return inner_face_mask
 
+def create_hsv_mask(image_rgb, hue_range=(0, 180), saturation_range=(0, 255), value_range=(0, 255)):
+    """
+    HSV色空間で特定の範囲に基づいたマスクを作成する関数。
+
+    Parameters:
+        image_rgb (numpy.ndarray): RGB画像。
+        hue_range (tuple): 色相(H)の範囲 (0-180)。
+        saturation_range (tuple): 彩度(S)の範囲 (0-255)。
+        value_range (tuple): 明度(V)の範囲 (0-255)。
+
+    Returns:
+        mask (numpy.ndarray): HSVマスク（0または1の値を持つ2D配列）。
+    """
+    # RGB画像をBGRに変換
+    image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+
+    # BGR画像をHSV色空間に変換
+    hsv_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+
+    # 範囲指定でマスクを作成
+    lower_bound = np.array([hue_range[0], saturation_range[0], value_range[0]])
+    upper_bound = np.array([hue_range[1], saturation_range[1], value_range[1]])
+    mask = cv2.inRange(hsv_image, lower_bound, upper_bound)
+
+    # マスクを二値化して0または1にする
+    mask = (mask > 0).astype(np.float32)
+    return mask
+
 
 # ================================================================#
 # 画像読み込み　出力用関数　#
@@ -477,6 +505,23 @@ def makeSkinSeparation(INPUT_DIR,input_image_list,OUTPUT_DIR,vector,mask_type= '
         elif mask_type == "black":
             print("Using black mask.")
             img_mask = create_black_mask(image_rgb)
+        elif mask_type == "hsv":
+            print("Using HSV mask.")
+            # 色相、彩度、明度の範囲を指定
+            hue_range = (0, 50)  # 例: 赤系の範囲
+            saturation_range = (50, 255)
+            value_range = (50, 255)
+            img_mask = create_hsv_mask(image_rgb, hue_range, saturation_range, value_range)
+        elif mask_type == "face-hsv":
+            print("Using HSV mask.")
+            # 色相、彩度、明度の範囲を指定
+            hue_range = (0, 50)  # 例: 赤系の範囲
+            saturation_range = (50, 255)
+            value_range = (50, 255)
+            img_mask1 = create_hsv_mask(image_rgb, hue_range, saturation_range, value_range)
+            img_mask2 = create_face_mask(image_rgb)
+            
+            img_mask = img_mask1 * img_mask2
         else:
             raise ValueError(f"Invalid mask_type: {mask_type}. Choose 'face' or 'black'.")
         
@@ -596,8 +641,8 @@ if __name__ == '__main__':
 
     vector = [melanin,hemoglobin,shading]
 
-    # マスクタイプを選択 ("face" または "black")
-    mask_type = "face"  # ここで選択を変更
+    # マスクタイプを選択 ("face" または "black","hsv",face-hsv)
+    mask_type = "face-hsv"  # ここで選択を変更
     for target in target_list:
         OUTPUT_DIR = str(current.parents[1])+"/data/"+target+"/result-cvenew/"
         INPUT_DIR  =DATA_DIR+"\\"+target +"\\"
