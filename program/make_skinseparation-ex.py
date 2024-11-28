@@ -282,7 +282,7 @@ if __name__ == '__main__':
     
     current= Path(__file__).resolve()
     DATA_DIR =str(current.parents[1] / "data")
-    target_list =['sample1']
+    target_list =['sample3']
     
     ## 旧マスターベクトル
     # melanin= [0.087196, 0.471511, 0.877539]
