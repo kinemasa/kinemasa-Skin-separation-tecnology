@@ -10,7 +10,6 @@ warnings.filterwarnings('ignore')
 import cv2
 import glob
 import numpy as np
-from scipy import io, interpolate
 from pathlib import Path
 import rawpy
 from PIL import Image
@@ -18,30 +17,15 @@ from PIL.ExifTags import TAGS
 import mediapipe as mp  
 from tqdm import tqdm  
 import matplotlib.pyplot as plt
-import matplotlib.style as mplstyle
-mplstyle.use('fast')
-# MediapipeのFaceDetectionを初期化
-mp_face_mesh = mp.solutions.face_mesh
-mp_drawing = mp.solutions.drawing_utils
-import numpy as np
-from scipy.spatial import ConvexHull
-from scipy.optimize import minimize
-import numpy as np
-from scipy.spatial import ConvexHull
-from scipy.optimize import minimize
 import plotly.graph_objects as go
-import numpy as np
-from scipy.spatial import ConvexHull
-from scipy.optimize import minimize
-from sklearn.neighbors import KDTree
-import open3d as o3d
-import numpy as np
-from sklearn.preprocessing import StandardScaler, MinMaxScaler,RobustScaler
-
-
 # MediapipeのFaceDetectionを初期化
 mp_face_mesh = mp.solutions.face_mesh
 mp_drawing = mp.solutions.drawing_utils
+import numpy as np
+from scipy.spatial import ConvexHull
+from scipy.optimize import minimize
+import numpy as np
+
 #========================================================#
 # 可視化用関数#
 #=======================================================
@@ -65,84 +49,6 @@ def plot_histogram(data, title="Histogram", xlabel="Value", ylabel="Frequency", 
     plt.title(title)
     plt.show()
     
-    
-def plot_3d_S_to_skinFlat(S,name,melanin_vector, hemoglobin_vector,vec):
-    """
-    3次元プロットを作成してSのRGB成分を可視化する関数。
-    
-    入力:
-        S: (3, height, width) のnumpy配列
-    """
-    # SのRGB成分を平坦化して取得
-    x = S[0].flatten()  # R成分
-    y = S[1].flatten()  # G成分
-    z = S[2].flatten()  # B成分
-    
-    # Find the closest point to the origin in S
-    distances = np.sqrt(x**2 + y**2 + z**2)
-    closest_index = np.argmin(distances)
-    closest_point = np.array([x[closest_index], y[closest_index], z[closest_index]])
-    
-    # S = S-closest_point[:, np.newaxis, np.newaxis]
-    
-    x = S[0].flatten()  # R成分
-    y = S[1].flatten()  # G成分
-    z = S[2].flatten()  # B成分
-    norm = np.cross(melanin_vector,hemoglobin_vector)
-    norm = norm / np.linalg.norm(norm)
-    
-    # 3Dプロットの設定
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    
-    # RGB値を使って色を設定
-    # 3D散布図を描画
-    ax.scatter(x, y, z, c='b', marker='o', alpha=0.3,s=1)
-    # t = -(norm[0]*S[0] + norm[1]*S[1] + norm[2]*S[2]) / (norm[0]*vec[0,0]+norm[1]*vec[0,1]+norm[2]*vec[0,2])
-    t = -(norm[0]*S[0] + norm[1]*S[1] + norm[2]*S[2]) / (norm[0]*vec[0,0]+norm[1]*vec[0,1]+norm[2]*vec[0,2])
-    skin_flat = (t[np.newaxis,:,:].transpose(1,2,0)*vec[0]).transpose(2,0,1) + S
-    projected_x =skin_flat[0].flatten()
-    projected_y =skin_flat[1].flatten()
-    projected_z =skin_flat[2].flatten()
-    
-    distances = np.sqrt(projected_x**2 + projected_y**2 + projected_z**2)
-    closest_index = np.argmin(distances)
-    closest_point = np.array([projected_x[closest_index], projected_y[closest_index], projected_z[closest_index]])
-    
-    skin_flat = skin_flat-closest_point[:, np.newaxis, np.newaxis]
-    projected_x =skin_flat[0]
-    projected_y =skin_flat[1]
-    projected_z =skin_flat[2]
-    # Scatter plot of projected points on the plane
-    ax.scatter(projected_x.flatten(), projected_y.flatten(), projected_z.flatten(), 
-               c='#FFDAB9', marker='o', alpha=0.5, label="Projected Points on Plane",s=1)
-    
-    # Define the plane using the melanin and hemoglobin vectors
-    melanin_vector = np.array(melanin_vector)
-    hemoglobin_vector = np.array(hemoglobin_vector)
-    
-    # Generate a grid for the plane
-    # メッシュグリッドのパラメータ範囲を定義
-    u = np.linspace(0, 2, 10)
-    v = np.linspace(0, 2, 10)
-    U, V = np.meshgrid(u, v)
-    plane_x =  U * hemoglobin[0] + V * melanin[0]
-    plane_y = U * hemoglobin[1] + V * melanin[1]
-    plane_z =  U * hemoglobin[2] + V * melanin[2]
-    # Plot the plane
-    ax.plot_surface(plane_x, plane_y, plane_z, color='lightblue', alpha=0.5)
-    
-    ax.quiver(0, 0, 0, melanin_vector[0], melanin_vector[1], melanin_vector[2], 
-              color='brown', label='Melanin Vector', arrow_length_ratio=0.1)
-    ax.quiver(0, 0, 0, hemoglobin_vector[0], hemoglobin_vector[1], hemoglobin_vector[2], 
-              color='yellow', label='Hemoglobin Vector', arrow_length_ratio=0.1)
-    
-    ax.set_xlabel('-logR Component')
-    ax.set_ylabel('-logG Component')
-    ax.set_zlabel('-logB Component')
-    ax.set_title("3D Plot of"+ name+" Components")
-
-    plt.show()
     
 def plot_3d__skinFlat(skin_flat,melanin_vector, hemoglobin_vector,vec):
     """
@@ -187,11 +93,9 @@ def plot_3d__skinFlat(skin_flat,melanin_vector, hemoglobin_vector,vec):
 
     plt.show()
 
-import plotly.graph_objects as go
-
 def plot_3d_skinFlat_plotly(skin_flat, melanin_vector, hemoglobin_vector, vec, max_points=5000):
     """
-    3次元プロットをPlotlyでインタラクティブに表示する。
+    3次元プロットをPlotlyでインタラクティブに表示
 
     Parameters:
         skin_flat: (3, height, width) のnumpy配列。
@@ -220,8 +124,8 @@ def plot_3d_skinFlat_plotly(skin_flat, melanin_vector, hemoglobin_vector, vec, m
     # 平面を追加
     melanin_vector = np.array(melanin_vector)
     hemoglobin_vector = np.array(hemoglobin_vector)
-    u = np.linspace(0, 2, 10)
-    v = np.linspace(0, 2, 10)
+    u = np.linspace(0, 6, 30)
+    v = np.linspace(0, 6, 30)
     U, V = np.meshgrid(u, v)
     plane_x = U * hemoglobin_vector[0] + V * melanin_vector[0]
     plane_y = U * hemoglobin_vector[1] + V * melanin_vector[1]
@@ -357,55 +261,53 @@ def read_cr2_image(file_path):
 
     return rgb_image
 
-def find_nearest_offset_to_origin(skin_flat, melanin, hemoglobin):
+#==============================================================
+# バイアス調整用関数
+# =============================================================
+
+def find_optimal_offset(skin_flat, melanin, hemoglobin):
     """
-    正の線形結合で表されるようにしつつ、原点に最も近いオフセットを求める。
+    点群をメラニンとヘモグロビンベクトルの線形結合で表される範囲に多く含まれるよう移動する最適なオフセットを計算。
 
     Parameters:
         skin_flat: (3, height, width) のnumpy配列。点群。
-        melanin: メラニンベクトル。
-        hemoglobin: ヘモグロビンベクトル。
+        melanin: メラニンベクトル (3要素)。
+        hemoglobin: ヘモグロビンベクトル (3要素)。
 
     Returns:
-        optimal_offset: 原点に最も近いオフセット。
+        optimal_offset: 点群を移動させる最適なベクトル (3要素)。
     """
     # 点群を3次元座標のリストに変換
-    skin_flat_points = skin_flat.reshape(3, -1).T  # (height*width, 3)
+    skin_flat_points = skin_flat.reshape(3, -1).T  # (N, 3)
     
-    # 凸包を計算
-    hull = ConvexHull(skin_flat_points,qhull_options='Qt')
-    
-    # 凸包の頂点を取得
-    hull_vertices = skin_flat_points[hull.vertices]
-    
-    # 最適化の目的関数: ||O||^2 を最小化
-     # 最適化の目的関数: 原点からオフセットされた凸包点群までの最小距離
-    def objective(O):
-        distances = np.linalg.norm(hull_vertices - O, axis=1)
-        return np.min(distances)  # 原点に最も近い点を考慮
-    
-    # 制約条件: 
-    def constraint(v):
-        def con(O):
-            A = np.array([melanin, hemoglobin]).T
-            b = v - O
-            coeffs, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
-            alpha, beta = coeffs
-            return np.min([alpha, beta])  
-        return con
-    
-    # 制約を構築
-    constraints = [{'type': 'ineq', 'fun': constraint(v)} for v in hull_vertices]
-    
+    # メラニン・ヘモグロビンベクトルの基底を定義
+    basis = np.array([melanin, hemoglobin]).T  # (3, 2)
+
+    # 点が線形結合の範囲内に入るかをチェックする関数
+    def is_within_range(points):
+        """
+        点群がメラニン・ヘモグロビンの正の線形結合で表されるか判定。
+        """
+        coefficients, residuals, rank, s = np.linalg.lstsq(basis, points.T, rcond=None)
+        alpha, beta = coefficients
+        return (alpha > 0) & (beta > 0)
+
+    # 目的関数: 範囲内に入る点の割合を最大化
+    def objective(offset):
+        moved_points = skin_flat_points + offset  # 点群を移動
+        within_range = is_within_range(moved_points)
+        return -np.sum(within_range) + np.linalg.norm(offset)# 範囲内に入る点の数を最大化
+
     # 初期値（オフセットの初期推定）
     O0 = np.zeros(3)
-    
+
     # 最適化実行
-    result = minimize(objective, O0, constraints=constraints, method='SLSQP')
+    result = minimize(objective, O0, method='Nelder-Mead')
     
     if not result.success:
         raise ValueError("Optimization failed.")
     
+    # 最適な移動ベクトル
     optimal_offset = result.x
     return optimal_offset
 
@@ -508,18 +410,28 @@ def makeSkinSeparation(INPUT_DIR,input_image_list,OUTPUT_DIR,vector,mask_type= '
         elif mask_type == "hsv":
             print("Using HSV mask.")
             # 色相、彩度、明度の範囲を指定
-            hue_range = (0, 50)  # 例: 赤系の範囲
+            hue_range = (0, 50)  
             saturation_range = (50, 255)
             value_range = (50, 255)
             img_mask = create_hsv_mask(image_rgb, hue_range, saturation_range, value_range)
         elif mask_type == "face-hsv":
             print("Using HSV mask.")
             # 色相、彩度、明度の範囲を指定
-            hue_range = (0, 50)  # 例: 赤系の範囲
+            hue_range = (0, 50)  
             saturation_range = (50, 255)
             value_range = (50, 255)
             img_mask1 = create_hsv_mask(image_rgb, hue_range, saturation_range, value_range)
             img_mask2 = create_face_mask(image_rgb)
+            
+            img_mask = img_mask1 * img_mask2
+        elif mask_type == "black-hsv":
+            print("black HSV mask.")
+            # 色相、彩度、明度の範囲を指定
+            hue_range = (0, 50)  
+            saturation_range = (50, 255)
+            value_range = (50, 255)
+            img_mask1 = create_hsv_mask(image_rgb, hue_range, saturation_range, value_range)
+            img_mask2 = create_black_mask(image_rgb)
             
             img_mask = img_mask1 * img_mask2
         else:
@@ -539,11 +451,6 @@ def makeSkinSeparation(INPUT_DIR,input_image_list,OUTPUT_DIR,vector,mask_type= '
         # 濃度空間 (log空間) へ
         S = -np.log(linearSkin + img_mask2) * img_mask
 
-        # 肌色空間の起点を 0 へ
-        # 必要に応じて調整するパラメーター
-        MinSkin = [0, 0, 0]
-        for i in range(3):
-            S[i] = S[i] - MinSkin[i]
         
         #===============================================================================
         # 陰影成分の除去
@@ -568,7 +475,28 @@ def makeSkinSeparation(INPUT_DIR,input_image_list,OUTPUT_DIR,vector,mask_type= '
         # rest：陰影成分
         skin_flat = (t[np.newaxis,:,:].transpose(1,2,0)*vec[0]).transpose(2,0,1) + S
         rest = S - skin_flat
+        
+        # # 生成されたマスクの保存
+        # mask_output_path = os.path.join(OUTPUT_DIR, f"{image_basename}_mask.png")
+        # cv2.imwrite(mask_output_path, (img_mask.transpose(1, 2, 0) * 255).astype(np.uint8))
+        # print(f"Mask saved to: {mask_output_path}")
 
+        # # マスク適用後の画像の保存
+        # masked_image = (image_rgb * img_mask.transpose(1, 2, 0)).astype(np.uint8)
+        # masked_image_output_path = os.path.join(OUTPUT_DIR, f"{image_basename}_masked.png")
+        # cv2.imwrite(masked_image_output_path, cv2.cvtColor(masked_image, cv2.COLOR_RGB2BGR))
+        # print(f"Masked image saved to: {masked_image_output_path}")
+        
+        
+        plot_3d_skinFlat_plotly(skin_flat,melanin,hemoglobin,vec)
+        optimal_offset = find_optimal_offset(skin_flat,melanin,hemoglobin)
+        MinSkin =optimal_offset
+        
+        print(optimal_offset)
+        for i in range(3):
+            skin_flat[i] = skin_flat[i] + MinSkin[i]
+            
+        plot_3d_skinFlat_plotly(skin_flat,melanin,hemoglobin,vec)
         #===============================================================================
         # 色素濃度の計算
         #===============================================================================
@@ -609,18 +537,13 @@ def makeSkinSeparation(INPUT_DIR,input_image_list,OUTPUT_DIR,vector,mask_type= '
             # 可視化して保存する。最大値と最小値で規格化する
             img = L_Obj.transpose(1,2,0)
             
-            img_exp = np.clip(np.exp(-img), 0, 1) * img_mask.transpose(1,2,0)
+            img_exp = np.exp(-img) * img_mask.transpose(1,2,0)
             
             # マスク外を灰色に設定
             gray_value = 192 / 255.0 
             img_exp[img_mask.transpose(1, 2, 0) == 0] = gray_value
             
-            min_v = img_exp[img_mask.transpose(1,2,0)>0.0].min()
-            ef_img = img_exp -min_v
-            max_v = ef_img[img_mask.transpose(1,2,0)>0.0].max()
-            ef_img = (ef_img / max_v)
-            # ef_img =img_exp
-            print(f"Min: {min_v}, Max: {max_v}")
+            ef_img =img_exp
             save_image(os.path.join(OUTPUT_DIR, output_path), ef_img)
 
 
@@ -629,7 +552,7 @@ if __name__ == '__main__':
     
     current= Path(__file__).resolve()
     DATA_DIR =str(current.parents[1] / "data")
-    target_list =['sample3']
+    target_list =['check-patch-watanabe']
     
     ## 旧マスターベクトル
     # melanin= [0.087196, 0.471511, 0.877539]
@@ -642,9 +565,9 @@ if __name__ == '__main__':
     vector = [melanin,hemoglobin,shading]
 
     # マスクタイプを選択 ("face" または "black","hsv",face-hsv)
-    mask_type = "face-hsv"  # ここで選択を変更
+    mask_type = "black-hsv"  # ここで選択を変更
     for target in target_list:
-        OUTPUT_DIR = str(current.parents[1])+"/data/"+target+"/result-cvenew/"
+        OUTPUT_DIR = str(current.parents[1])+"/data/"+target+"/result-cvenew-nooffset/"
         INPUT_DIR  =DATA_DIR+"\\"+target +"\\"
         input_image_list = glob.glob(str(DATA_DIR+"/"+target +"/**.png"))
         os.makedirs(OUTPUT_DIR, exist_ok=True)
